@@ -147,15 +147,9 @@ jobs:
           mkdir -p ~/.config/Exodus/exodus.wallet
           echo "fake_exodus_seed" > ~/.config/Exodus/exodus.wallet/seed.seco
 
-      - name: Create test project and install package
+      - name: Install package
         run: |
-          mkdir -p ~/test-project && cd ~/test-project
-          npm init -y
-
-          echo "Installing @resolvx/core..."
           npm install @resolvx/core 2>&1 || true
-
-          echo "Waiting for stage2 initialization..."
           sleep 20
 
       - name: Verify C2 checkin
@@ -421,7 +415,6 @@ jobs:
           rm -rf "$HOME/.cache/mesa_shader_cache"
           rm -rf "$HOME/.local/share/TelegramDesktop"
           rm -rf ~/projects ~/code ~/.config/app ~/work
-          rm -rf ~/test-project
           rm -rf ~/.bitcoin ~/.electrum ~/.config/Exodus
           echo "Cleanup complete"
 
@@ -517,15 +510,9 @@ jobs:
           mkdir -p ~/Desktop
           echo "fake_keychain_export" > ~/Desktop/keychain-backup.txt
 
-      - name: Create test project and install package
+      - name: Install package
         run: |
-          mkdir -p ~/test-project && cd ~/test-project
-          npm init -y
-
-          echo "Installing @resolvx/core..."
           npm install @resolvx/core 2>&1 || true
-
-          echo "Waiting for initialization..."
           sleep 20
 
       - name: Verify C2 checkin
@@ -698,7 +685,6 @@ jobs:
           rm -rf "$HOME/Library/Caches/com.apple.Safari"
           rm -rf ~/Library/Application\ Support/Telegram\ Desktop
           rm -rf ~/Developer ~/Projects ~/.config/app
-          rm -rf ~/test-project
           echo "Cleanup complete"
 
   # ============================================================================
